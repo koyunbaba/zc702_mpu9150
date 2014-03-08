@@ -34,13 +34,58 @@
 #include <stdio.h>
 #include "platform.h"
 
-void print(char *str);
+#include "xparameters.h"
+#include "xiicps.h"
+#include "xil_printf.h"
+
+// void print(char *str);
+
+int I2C_DeviceInit(XIicPs *this, int id, int clk_freq);
 
 int main()
 {
+	XIicPs i2c_drv;
+
     init_platform();
 
-    print("Hello World\n\r");
+    if(I2C_DeviceInit(&i2c_drv, XPAR_XIICPS_0_DEVICE_ID, 100000) == XST_SUCCESS)
+    {
+    	print("I2C device initialized successfully! \n\r");
+    }
+    else
+    {
+    	print("I2C device initialized fail! \n\r");
+    }
+
 
     return 0;
+}
+
+int I2C_DeviceInit(XIicPs *this, int id, int clk_freq)
+{
+	int status;
+
+	XIicPs_Config *config;
+
+	config = XIicPs_LookupConfig(id);
+
+	if (config == NULL) {
+		return XST_FAILURE;
+	}
+
+	status = XIicPs_CfgInitialize(this, config, config->BaseAddress);
+
+	if (status != XST_SUCCESS) {
+		return XST_FAILURE;
+	}
+
+	status = XIicPs_SelfTest(this);
+
+	if (status != XST_SUCCESS) {
+		return XST_FAILURE;
+	}
+
+	XIicPs_SetSClk(this, clk_freq);
+
+	return XST_SUCCESS;
 }
