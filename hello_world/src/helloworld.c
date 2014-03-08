@@ -42,13 +42,44 @@
 
 int I2C_DeviceInit(XIicPs *this, int id, int clk_freq);
 
+int I2CMUX_SelectWrite(XIicPs *i2c_drv, u8 sel);
+int I2CMUX_SelectRead(XIicPs *i2c_drv, u8 *sel);
+
+// I2C mux (PCA9548) parameters
+#define I2C_MUX_ADDR				0x74  		// 0b1110100
+
+#define	I2C_MUX_SEL(s) I2C_MUX_SEL_##s##_MASK
+
+#define I2C_MUX_SEL_NONE_MASK		0x00
+#define I2C_MUX_SEL_USR_CLK_MASK	0x01
+#define I2C_MUX_SEL_HDMI_MASK		0x02
+#define I2C_MUX_SEL_EEPROM_MASK		0x04
+#define I2C_MUX_SEL_EXPAND_MASK		0x08
+
+#define I2C_MUX_SEL_RTC_MASK		0x10
+#define I2C_MUX_SEL_FMC1_MASK		0x20
+#define I2C_MUX_SEL_FMC2_MASK		0x40
+#define I2C_MUX_SEL_PMBUS_MASK		0x80
+
+// MPU9150
+#define MPU9150_ADDR	0x68
+
+int MPU9150_WriteReg(XIicPs *i2c_drv, u8 addr, u8 *data, int len);
+int MPU9150_ReadReg(XIicPs *i2c_drv, u8 addr, u8 *data, int len);
+
+
+XIicPs i2c_drv;
+
+u8 i2c_send_buffer[128];
+u8 i2c_recv_buffer[128];
+
 int main()
 {
-	XIicPs i2c_drv;
+	u8 mpu9150_reg_addr;
 
     init_platform();
 
-    if(I2C_DeviceInit(&i2c_drv, XPAR_XIICPS_0_DEVICE_ID, 100000) == XST_SUCCESS)
+    if(I2C_DeviceInit(&i2c_drv, XPAR_XIICPS_0_DEVICE_ID, 400000) == XST_SUCCESS)
     {
     	print("I2C device initialized successfully! \n\r");
     }
@@ -57,6 +88,23 @@ int main()
     	print("I2C device initialized fail! \n\r");
     }
 
+
+    I2CMUX_SelectWrite(&i2c_drv, I2C_MUX_SEL(NONE));
+	xil_printf("PCA9548 register wrote\n\r");
+
+    I2CMUX_SelectRead(&i2c_drv, &i2c_recv_buffer[0]);
+    xil_printf("PCA9548 register read back: 0x%x \n\r", i2c_recv_buffer[0]);
+
+    I2CMUX_SelectWrite(&i2c_drv, I2C_MUX_SEL(PMBUS));
+	xil_printf("PCA9548 register wrote\n\r");
+
+	XIicPs_MasterRecvPolled(&i2c_drv, i2c_recv_buffer, 1, I2C_MUX_ADDR);
+	xil_printf("PCA9548 register read back: 0x%x \n\r", i2c_recv_buffer[0]);
+
+
+	mpu9150_reg_addr = 0x75;
+	MPU9150_ReadReg(&i2c_drv, mpu9150_reg_addr, i2c_recv_buffer, 1);
+	xil_printf("MPU9150 register 0x%x read back: 0x%x \n\r", mpu9150_reg_addr, i2c_recv_buffer[0]);
 
     return 0;
 }
@@ -85,7 +133,68 @@ int I2C_DeviceInit(XIicPs *this, int id, int clk_freq)
 		return XST_FAILURE;
 	}
 
-	XIicPs_SetSClk(this, clk_freq);
+	status = XIicPs_SetSClk(this, clk_freq);
+
+	if (status != XST_SUCCESS) {
+		return XST_FAILURE;
+	}
 
 	return XST_SUCCESS;
 }
+
+int I2CMUX_SelectWrite(XIicPs *i2c_drv, u8 sel)
+{
+	int status;
+
+	status = XIicPs_MasterSendPolled(i2c_drv, &sel, 1, I2C_MUX_ADDR);
+
+	while (XIicPs_BusIsBusy(i2c_drv));
+
+	return status;
+}
+
+int I2CMUX_SelectRead(XIicPs *i2c_drv, u8 *sel)
+{
+	return XIicPs_MasterRecvPolled(i2c_drv, sel, 1, I2C_MUX_ADDR);
+}
+
+int MPU9150_WriteReg(XIicPs *i2c_drv, u8 addr, u8 *data, int len)
+{
+	int status;
+	int i;
+	u8	packet[2];
+
+	packet[0] = addr;
+
+	for(i = 0; i < len; i++)
+	{
+		packet[1] = data[i];
+
+		status = XIicPs_MasterSendPolled(i2c_drv, packet, 2, MPU9150_ADDR);
+		while (XIicPs_BusIsBusy(i2c_drv));
+
+		if(status != XST_SUCCESS)
+			break;
+	}
+
+	return status;
+}
+
+int MPU9150_ReadReg(XIicPs *i2c_drv, u8 addr, u8 *data, int len)
+{
+	int status;
+
+	status = XIicPs_MasterSendPolled(i2c_drv, &addr, 1, MPU9150_ADDR);
+	while (XIicPs_BusIsBusy(i2c_drv));
+
+	if(status != XST_SUCCESS)
+		return status;
+
+	status = XIicPs_MasterRecvPolled(i2c_drv, data, len, MPU9150_ADDR);
+
+	if(status != XST_SUCCESS)
+		return status;
+
+	return XST_SUCCESS;
+}
+
