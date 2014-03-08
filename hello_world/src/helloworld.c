@@ -38,6 +38,8 @@
 #include "xiicps.h"
 #include "xil_printf.h"
 
+#include "mpu9150_l.h"
+
 // void print(char *str);
 
 int I2C_DeviceInit(XIicPs *this, int id, int clk_freq);
@@ -60,13 +62,6 @@ int I2CMUX_SelectRead(XIicPs *i2c_drv, u8 *sel);
 #define I2C_MUX_SEL_FMC1_MASK		0x20
 #define I2C_MUX_SEL_FMC2_MASK		0x40
 #define I2C_MUX_SEL_PMBUS_MASK		0x80
-
-// MPU9150
-#define MPU9150_ADDR	0x68
-
-int MPU9150_WriteReg(XIicPs *i2c_drv, u8 addr, u8 *data, int len);
-int MPU9150_ReadReg(XIicPs *i2c_drv, u8 addr, u8 *data, int len);
-
 
 XIicPs i2c_drv;
 
@@ -157,44 +152,3 @@ int I2CMUX_SelectRead(XIicPs *i2c_drv, u8 *sel)
 {
 	return XIicPs_MasterRecvPolled(i2c_drv, sel, 1, I2C_MUX_ADDR);
 }
-
-int MPU9150_WriteReg(XIicPs *i2c_drv, u8 addr, u8 *data, int len)
-{
-	int status;
-	int i;
-	u8	packet[2];
-
-	packet[0] = addr;
-
-	for(i = 0; i < len; i++)
-	{
-		packet[1] = data[i];
-
-		status = XIicPs_MasterSendPolled(i2c_drv, packet, 2, MPU9150_ADDR);
-		while (XIicPs_BusIsBusy(i2c_drv));
-
-		if(status != XST_SUCCESS)
-			break;
-	}
-
-	return status;
-}
-
-int MPU9150_ReadReg(XIicPs *i2c_drv, u8 addr, u8 *data, int len)
-{
-	int status;
-
-	status = XIicPs_MasterSendPolled(i2c_drv, &addr, 1, MPU9150_ADDR);
-	while (XIicPs_BusIsBusy(i2c_drv));
-
-	if(status != XST_SUCCESS)
-		return status;
-
-	status = XIicPs_MasterRecvPolled(i2c_drv, data, len, MPU9150_ADDR);
-
-	if(status != XST_SUCCESS)
-		return status;
-
-	return XST_SUCCESS;
-}
-
